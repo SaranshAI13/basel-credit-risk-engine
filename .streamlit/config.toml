@@ -1,0 +1,11 @@
+[theme]
+primaryColor = "#2563EB"          # Royal Blue
+backgroundColor = "#F8FAFC"       # Light Slate (off-white)
+secondaryBackgroundColor = "#FFFFFF" # Pure White
+textColor = "#0F172A"             # Dark Slate
+font = "sans serif"
+
+[server]
+headless = true
+enableCORS = false
+enableXsrfProtection = false
