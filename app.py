@@ -362,15 +362,34 @@ with tab_exec:
         </div>
         """, unsafe_allow_html=True)
         
+    # --- Noob-Friendly KRI Explainer ---
+    with st.expander("🧑‍🏫 New to Banking? Click here for a plain-English explanation of these 5 numbers"):
+        st.markdown("""
+**Card 1 — Total Portfolio Exposure (EAD = $52.99B)**
+This is the total amount of money our bank has lent out to companies and governments worldwide. If every single borrower defaulted at once, this is the maximum we could lose.
+
+**Card 2 — Expected Loss (EL = $2,071.5M)**
+In any normal year, some borrowers will default and we will lose some money. This is our best estimate of how much money we expect to lose on average per year. Think of it like a provision set aside in advance.
+
+**Card 3 — Risk-Weighted Assets (RWA = $76.13B)**
+Not all loans are equally risky. A loan to the US Government is safer than a loan to a small risky company. RWA adjusts our total loans by their riskiness. Even though we lent $52.99B, the risk-adjusted equivalent is $76.13B.
+
+**Card 4 — Min Capital Buffer ($6,090.4M)**
+Regulators say: you must keep 8% of your RWA as your own cash safety net. This $6.09B is the minimum equity our bank must hold at all times so that if loans go bad, depositors do not lose their savings.
+
+**Card 5 — IRRBB & HQLA Liquidity ($0.0M)**
+If interest rates suddenly rise, existing loans lose market value (like old bonds becoming less valuable). The $0.0M shows the current valuation loss from rate changes. HQLA/EAD 43.4% means 43.4% of our loan book is in safe government bonds we can sell instantly in a crisis.
+        """)
+
     st.markdown("---")
     
     # --- Visualization Section ---
-    st.markdown("### Portfolio Risk Concentation & Allocation Analysis")
+    st.markdown("### Portfolio Risk Concentration & Allocation Analysis")
     
     row1_col1, row1_col2 = st.columns(2)
     
     with row1_col1:
-        # Sector Concentration Map (Treemap)
+        # Sector Concentration Map (Treemap) - Clickable drill-down
         sector_df = portfolio_df.groupby('industry_sector').agg(
             ead_m=('ead_m', 'sum'),
             rwa_m=('rwa_m', 'sum'),
@@ -387,12 +406,32 @@ with tab_exec:
             labels={'risk_weight_pct': 'Avg Risk Weight %', 'ead_m': 'Exposure ($M)'},
             title="Portfolio Exposure Concentration & Risk-Weight by Sector"
         )
-        fig_sec.update_layout(template="plotly_white", margin=dict(t=40, l=10, r=10, b=10))
+        fig_sec.update_layout(template="plotly_white", margin=dict(t=40, l=10, r=10, b=10), height=380)
+        fig_sec.update_traces(
+            hovertemplate="<b>%{label}</b><br>Exposure: $%{value:,.1f}M<br>Avg Risk Weight: %{color:.1f}%<extra></extra>"
+        )
         st.plotly_chart(fig_sec, use_container_width=True)
-        st.info("💡 **Simplifying the Treemap:** This shows how much money we've lent to each industry (EAD). The color represents the **Average Risk Weight**. Darker red sectors (like Utilities or Telecom) are riskier under Basel III, meaning the bank is forced to hold more protective capital buffers against them.")
+        st.info("💡 **Simplifying the Treemap:** Box size = how much money we lent to that sector. Color (red = risky, blue = safe) = Basel III penalty. Click a sector below to see its top firms.")
+
+        # --- Sector Drill-Down ---
+        all_sectors = sorted(portfolio_df['industry_sector'].dropna().unique().tolist())
+        selected_sector = st.selectbox("Click a Sector to See Its Top 10 Firms", ["— Select a Sector —"] + all_sectors, key="sector_drilldown")
+        if selected_sector != "— Select a Sector —":
+            sector_firms = portfolio_df[portfolio_df['industry_sector'] == selected_sector].sort_values('ead_m', ascending=False).head(10)
+            st.markdown(f"**Top 10 Firms in {selected_sector} Sector:**")
+            display_cols = ['client_name', 'entity_type', 'region', 'credit_rating', 'ead_m', 'rwa_m', 'expected_loss_m']
+            display_df = sector_firms[display_cols].copy()
+            display_df.columns = ['Client Name', 'Type', 'Region', 'Rating', 'EAD ($M)', 'RWA ($M)', 'Exp. Loss ($M)']
+            display_df = display_df.round(2)
+            st.dataframe(display_df, use_container_width=True)
+            # Mini metrics for selected sector
+            mc1, mc2, mc3 = st.columns(3)
+            mc1.metric("Total Sector EAD", f"${sector_firms['ead_m'].sum():,.1f}M")
+            mc2.metric("Avg Risk Weight", f"{(sector_firms['rwa_m'].sum()/sector_firms['ead_m'].sum())*100:.1f}%")
+            mc3.metric("Expected Loss", f"${sector_firms['expected_loss_m'].sum():,.1f}M")
         
     with row1_col2:
-        # Regional Exposure Concentration (Bar chart)
+        # Regional Exposure Concentration (Bar chart) - Clickable drill-down
         region_df = portfolio_df.groupby(['region', 'entity_type']).agg(
             ead_m=('ead_m', 'sum'),
             rwa_m=('rwa_m', 'sum'),
@@ -409,9 +448,48 @@ with tab_exec:
             labels={'ead_m': 'Exposure EAD ($ Millions)', 'region': 'Region'},
             barmode='group'
         )
-        fig_reg.update_layout(template="plotly_white", plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
+        fig_reg.update_layout(
+            template="plotly_white",
+            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="rgba(0,0,0,0)",
+            height=380
+        )
+        fig_reg.update_traces(
+            hovertemplate="<b>%{x}</b><br>Exposure: $%{y:,.1f}M<extra></extra>"
+        )
         st.plotly_chart(fig_reg, use_container_width=True)
-        st.info("💡 **Simplifying Regional Risk:** This bar chart shows our geographic distribution. Lending to or holding bonds in certain regions (e.g., Brazil or India) carries unique country-specific credit risks compared to stable regions like the US or UK.")
+        st.info("💡 **Simplifying Regional Risk:** Blue = Corporate loans, Green = Government bonds. Taller bar = more money lent there. Click a region below to see detailed country risk breakdown.")
+
+        # --- Region Drill-Down ---
+        all_regions = sorted(portfolio_df['region'].dropna().unique().tolist())
+        selected_region = st.selectbox("Click a Region to See Detailed Breakdown", ["— Select a Region —"] + all_regions, key="region_drilldown")
+        if selected_region != "— Select a Region —":
+            region_detail = portfolio_df[portfolio_df['region'] == selected_region]
+            st.markdown(f"**{selected_region} — Risk Breakdown:**")
+            # Summary metrics
+            rmc1, rmc2, rmc3, rmc4 = st.columns(4)
+            rmc1.metric("Total EAD", f"${region_detail['ead_m'].sum():,.1f}M")
+            rmc2.metric("Total RWA", f"${region_detail['rwa_m'].sum():,.1f}M")
+            rmc3.metric("Avg Risk Weight", f"{(region_detail['rwa_m'].sum()/region_detail['ead_m'].sum())*100:.1f}%")
+            rmc4.metric("Exp. Loss", f"${region_detail['expected_loss_m'].sum():,.1f}M")
+            # Rating distribution in that region
+            rating_dist = region_detail.groupby('credit_rating')['ead_m'].sum().reset_index()
+            rating_dist.columns = ['Credit Rating', 'EAD ($M)']
+            st.markdown("Rating Distribution:")
+            fig_reg_rating = px.bar(
+                rating_dist,
+                x='Credit Rating',
+                y='EAD ($M)',
+                color_discrete_sequence=['#1E3A8A'],
+                height=200
+            )
+            fig_reg_rating.update_layout(template="plotly_white", margin=dict(t=10, b=10, l=10, r=10))
+            st.plotly_chart(fig_reg_rating, use_container_width=True)
+            # Top clients in that region
+            top_region_clients = region_detail.sort_values('ead_m', ascending=False).head(8)
+            disp2 = top_region_clients[['client_name', 'entity_type', 'credit_rating', 'ead_m', 'expected_loss_m', 'hqla_class']].copy()
+            disp2.columns = ['Client Name', 'Type', 'Rating', 'EAD ($M)', 'Exp. Loss ($M)', 'HQLA Class']
+            st.dataframe(disp2.round(2), use_container_width=True)
 
     row2_col1, row2_col2 = st.columns(2)
     
@@ -443,14 +521,15 @@ with tab_exec:
         fig_rat.update_layout(
             title="Exposure (EAD) and Avg Risk Weight by Credit Rating",
             yaxis=dict(title="EAD ($ Millions)", side="left"),
-            yaxis2=dict(title="Average Risk Weight (%)", side="right", overlaying="y", range=[0, 160]),
+            yaxis2=dict(title="Average Risk Weight (%)", side="right", overlaying="y", range=[0, 400]),
             legend=dict(x=0.01, y=0.99, bgcolor="rgba(255,255,255,0.7)"),
             template="plotly_white",
             plot_bgcolor="rgba(0,0,0,0)",
-            paper_bgcolor="rgba(0,0,0,0)"
+            paper_bgcolor="rgba(0,0,0,0)",
+            height=380
         )
         st.plotly_chart(fig_rat, use_container_width=True)
-        st.info("💡 **Simplifying Ratings & Risk Weights:** As a client's credit rating falls (AAA down to CCC/C), their probability of default rises. The Basel framework penalizes this by expanding the **Risk Weight (green line)**, forcing the bank to hold up to 150% of the loan amount as capital.")
+        st.info("💡 **Simplifying Ratings & Risk Weights:** Blue bars = how much we lent to each rating group. Green line = penalty multiplier (Risk Weight). As rating falls from AAA to CCC, the green line shoots up — meaning the bank must lock more cash for riskier borrowers.")
         
     with row2_col2:
         # HQLA Liquidity Composition
@@ -475,8 +554,70 @@ with tab_exec:
         )
         fig_liq.update_layout(template="plotly_white", plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
         st.plotly_chart(fig_liq, use_container_width=True)
-        st.info("💡 **Simplifying HQLA Liquidity:** High-Quality Liquid Assets (HQLA) are safe assets that can be converted to cash instantly during a run. AAA/AA sovereigns have zero haircut (Level 1). A/BBB corporates face haircuts, and junk or subordinated bonds are completely excluded (Non-HQLA).")
-        
+        st.info("💡 **Simplifying HQLA Liquidity:** Green (Level 1) = safest cash equivalent (US Treasuries, 0% haircut). Blue (Level 2A) = 15% haircut. Orange (Level 2B) = 50% haircut. Red (Non-HQLA) = cannot be counted as emergency cash at all (100% haircut).")
+
+    st.markdown("---")
+
+    # --- Portfolio Health Scorecard ---
+    st.markdown("### 🏥 Portfolio Health Scorecard")
+    st.markdown("A quick-glance regulatory health check across five key dimensions of the portfolio.")
+
+    def score_traffic_light(value, green_thresh, amber_thresh, higher_is_better=True):
+        if higher_is_better:
+            if value >= green_thresh: return "🟢 Healthy"
+            elif value >= amber_thresh: return "🟡 Watch"
+            else: return "🔴 At Risk"
+        else:
+            if value <= green_thresh: return "🟢 Healthy"
+            elif value <= amber_thresh: return "🟡 Watch"
+            else: return "🔴 At Risk"
+
+    avg_rw = (total_rwa / total_ead) * 100
+    el_pct = (total_el / total_ead) * 100
+    hqla_ratio = (total_hqla / total_ead) * 100
+    capital_ratio = (min_cap_req / total_rwa) * 100
+    non_hqla_pct = (portfolio_df[portfolio_df['hqla_class'] == 'Non-HQLA']['ead_m'].sum() / total_ead) * 100
+
+    scorecard_data = [
+        {
+            "Metric": "Avg Risk Weight",
+            "Value": f"{avg_rw:.1f}%",
+            "Benchmark": "< 100% = Healthy",
+            "Status": score_traffic_light(avg_rw, 100, 130, higher_is_better=False),
+            "What it means": "Lower = safer loan portfolio composition"
+        },
+        {
+            "Metric": "Expected Loss Rate",
+            "Value": f"{el_pct:.2f}%",
+            "Benchmark": "< 3% = Healthy",
+            "Status": score_traffic_light(el_pct, 3.0, 6.0, higher_is_better=False),
+            "What it means": "Estimated annual loan loss as % of book"
+        },
+        {
+            "Metric": "HQLA / EAD Ratio",
+            "Value": f"{hqla_ratio:.1f}%",
+            "Benchmark": "> 30% = Healthy",
+            "Status": score_traffic_light(hqla_ratio, 30, 15, higher_is_better=True),
+            "What it means": "Emergency liquid cash available vs. total exposure"
+        },
+        {
+            "Metric": "Capital Adequacy",
+            "Value": f"{capital_ratio:.1f}%",
+            "Benchmark": "> 8% = Compliant",
+            "Status": score_traffic_light(capital_ratio, 8.0, 6.0, higher_is_better=True),
+            "What it means": "Actual capital buffer vs. regulatory minimum"
+        },
+        {
+            "Metric": "Non-HQLA Concentration",
+            "Value": f"{non_hqla_pct:.1f}%",
+            "Benchmark": "< 40% = Healthy",
+            "Status": score_traffic_light(non_hqla_pct, 40, 55, higher_is_better=False),
+            "What it means": "Portion of book that cannot be liquidated in a crisis"
+        },
+    ]
+    scorecard_df = pd.DataFrame(scorecard_data)
+    st.dataframe(scorecard_df, use_container_width=True, hide_index=True)
+
     st.markdown("---")
     
     # --- Basel III for Business Reference ---
