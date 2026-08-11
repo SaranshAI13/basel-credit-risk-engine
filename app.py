@@ -433,17 +433,10 @@ If interest rates suddenly rise, existing loans lose market value (like old bond
 
         # --- Sector Drill-Down ---
         all_sectors = sorted(portfolio_df['industry_sector'].dropna().unique().tolist())
-        sector_options = ["— Select a Sector —"] + all_sectors
-        if small_sector_names:
-            sector_options += ["Others (All Small Sectors)"]
-        selected_sector = st.selectbox("Select a Sector to See Its Top 10 Firms", sector_options, key="sector_drilldown")
+        selected_sector = st.selectbox("Select a Sector to See Its Top 10 Firms", ["— Select a Sector —"] + all_sectors, key="sector_drilldown")
 
         sector_firms = None
-        if selected_sector == "Others (All Small Sectors)":
-            sector_firms = portfolio_df[portfolio_df['industry_sector'].isin(small_sector_names)].sort_values('ead_m', ascending=False).head(10)
-            st.markdown("**Others bucket includes:** " + ", ".join([f"`{s}`" for s in sorted(small_sector_names)]))
-            st.markdown("**Top Firms in Other Sectors:**")
-        elif selected_sector != "— Select a Sector —":
+        if selected_sector != "— Select a Sector —":
             sector_firms = portfolio_df[portfolio_df['industry_sector'] == selected_sector].sort_values('ead_m', ascending=False).head(10)
             st.markdown(f"**Top 10 Firms in {selected_sector} Sector:**")
 
@@ -514,18 +507,14 @@ If interest rates suddenly rise, existing loans lose market value (like old bond
 
         # --- Region Drill-Down ---
         all_regions = sorted(portfolio_df['region'].dropna().unique().tolist())
-        drilldown_options = ["— Select a Region —"] + all_regions
-        if small_region_names:
-            drilldown_options += ["Others (All Small Regions)"]
-        selected_region = st.selectbox("Select a Region to See Detailed Breakdown", drilldown_options, key="region_drilldown")
-        if selected_region == "Others (All Small Regions)":
-            region_detail = portfolio_df[portfolio_df['region'].isin(small_region_names)]
-            st.markdown("**Others bucket includes these regions:** " + ", ".join([f"`{r}`" for r in sorted(small_region_names)]))
-            st.markdown("**Others (Small Regions) — Risk Breakdown:**")
-        elif selected_region != "— Select a Region —":
+        selected_region = st.selectbox("Select a Region to See Detailed Breakdown", ["— Select a Region —"] + all_regions, key="region_drilldown")
+
+        region_detail = None
+        if selected_region != "— Select a Region —":
             region_detail = portfolio_df[portfolio_df['region'] == selected_region]
             st.markdown(f"**{selected_region} — Risk Breakdown:**")
-        if selected_region != "— Select a Region —":
+        if region_detail is not None:
+
             # Summary metrics - using markdown to avoid truncation
             rmc1, rmc2, rmc3, rmc4 = st.columns(4)
             with rmc1:
