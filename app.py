@@ -463,13 +463,13 @@ If interest rates suddenly rise, existing loans lose market value (like old bond
             el_m=('expected_loss_m', 'sum')
         ).reset_index()
 
-        # Group small regions (< 2% of total EAD) into 'Others'
+        # Always show Top 5 regions by EAD, rest go into 'Others'
         region_totals = region_agg.groupby('region')['ead_m'].sum().reset_index()
         region_totals.columns = ['region', 'total_ead']
-        total_ead_reg = region_totals['total_ead'].sum()
-        threshold_reg = total_ead_reg * 0.02
-        main_region_names = region_totals[region_totals['total_ead'] >= threshold_reg]['region'].tolist()
-        small_region_names = region_totals[region_totals['total_ead'] < threshold_reg]['region'].tolist()
+        region_totals = region_totals.sort_values('total_ead', ascending=False)
+        TOP_N_REGIONS = 5
+        main_region_names = region_totals.head(TOP_N_REGIONS)['region'].tolist()
+        small_region_names = region_totals.tail(len(region_totals) - TOP_N_REGIONS)['region'].tolist()
 
         region_df = region_agg[region_agg['region'].isin(main_region_names)].copy()
         if small_region_names:
@@ -479,6 +479,7 @@ If interest rates suddenly rise, existing loans lose market value (like old bond
                 region_df = pd.concat([region_df, pd.DataFrame([{'region': 'Others', 'entity_type': 'Corporate', 'ead_m': others_corp['ead_m'].sum(), 'rwa_m': others_corp['rwa_m'].sum(), 'el_m': others_corp['el_m'].sum()}])], ignore_index=True)
             if not others_sov.empty:
                 region_df = pd.concat([region_df, pd.DataFrame([{'region': 'Others', 'entity_type': 'Sovereign', 'ead_m': others_sov['ead_m'].sum(), 'rwa_m': others_sov['rwa_m'].sum(), 'el_m': others_sov['el_m'].sum()}])], ignore_index=True)
+
         
         fig_reg = px.bar(
             region_df,
