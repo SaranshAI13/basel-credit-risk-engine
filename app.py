@@ -435,6 +435,8 @@ If interest rates suddenly rise, existing loans lose market value (like old bond
             sector_firms = portfolio_df[~portfolio_df['industry_sector'].isin(main_sectors['industry_sector'].tolist())].sort_values('ead_m', ascending=False).head(10)
             if sector_firms.empty:
                 sector_firms = portfolio_df.sort_values('ead_m').head(10)
+            other_sector_names = sorted(portfolio_df[~portfolio_df['industry_sector'].isin(main_sectors['industry_sector'].tolist())]['industry_sector'].unique().tolist())
+            st.markdown("**Others bucket includes these sectors:** " + ", ".join([f"`{s}`" for s in other_sector_names]) if other_sector_names else "")
             st.markdown("**Top Firms in Small / Other Sectors:**")
         elif selected_sector != "— Select a Sector —":
             sector_firms = portfolio_df[portfolio_df['industry_sector'] == selected_sector].sort_values('ead_m', ascending=False).head(10)
@@ -511,6 +513,7 @@ If interest rates suddenly rise, existing loans lose market value (like old bond
         selected_region = st.selectbox("Select a Region to See Detailed Breakdown", drilldown_options, key="region_drilldown")
         if selected_region == "Others (All Small Regions)":
             region_detail = portfolio_df[portfolio_df['region'].isin(small_region_names)]
+            st.markdown("**Others bucket includes these regions:** " + ", ".join([f"`{r}`" for r in sorted(small_region_names)]))
             st.markdown("**Others (Small Regions) — Risk Breakdown:**")
         elif selected_region != "— Select a Region —":
             region_detail = portfolio_df[portfolio_df['region'] == selected_region]
