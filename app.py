@@ -442,9 +442,9 @@ If interest rates suddenly rise, existing loans lose market value (like old bond
             sector_firms = portfolio_df[portfolio_df['industry_sector'] == selected_sector].sort_values('ead_m', ascending=False).head(10)
             st.markdown(f"**Top 10 Firms in {selected_sector} Sector:**")
         if selected_sector != "— Select a Sector —":
-            display_cols = ['client_name', 'entity_type', 'region', 'credit_rating', 'ead_m', 'rwa_m', 'expected_loss_m']
+            display_cols = ['client_name', 'entity_type', 'industry_sector', 'region', 'credit_rating', 'ead_m', 'rwa_m', 'expected_loss_m']
             display_df = sector_firms[display_cols].copy()
-            display_df.columns = ['Client Name', 'Type', 'Region', 'Rating', 'EAD ($M)', 'RWA ($M)', 'Exp. Loss ($M)']
+            display_df.columns = ['Client Name', 'Type', 'Sector', 'Region', 'Rating', 'EAD ($M)', 'RWA ($M)', 'Exp. Loss ($M)']
             display_df = display_df.round(2)
             st.dataframe(display_df, use_container_width=True)
             # Mini metrics for selected sector - using markdown to avoid truncation
@@ -546,8 +546,8 @@ If interest rates suddenly rise, existing loans lose market value (like old bond
             st.plotly_chart(fig_reg_rating, use_container_width=True)
             # Top clients in that region
             top_region_clients = region_detail.sort_values('ead_m', ascending=False).head(8)
-            disp2 = top_region_clients[['client_name', 'entity_type', 'credit_rating', 'ead_m', 'expected_loss_m', 'hqla_class']].copy()
-            disp2.columns = ['Client Name', 'Type', 'Rating', 'EAD ($M)', 'Exp. Loss ($M)', 'HQLA Class']
+            disp2 = top_region_clients[['client_name', 'entity_type', 'region', 'credit_rating', 'ead_m', 'expected_loss_m', 'hqla_class']].copy()
+            disp2.columns = ['Client Name', 'Type', 'Region', 'Rating', 'EAD ($M)', 'Exp. Loss ($M)', 'HQLA Class']
             st.dataframe(disp2.round(2), use_container_width=True)
 
 
