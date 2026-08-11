@@ -397,18 +397,21 @@ If interest rates suddenly rise, existing loans lose market value (like old bond
         ).reset_index()
         sector_df['risk_weight_pct'] = (sector_df['rwa_m'] / sector_df['ead_m']) * 100
 
-        # Group small sectors (< 2% of total EAD) into 'Others'
-        total_ead_sec = sector_df['ead_m'].sum()
-        threshold_sec = total_ead_sec * 0.02
-        main_sectors = sector_df[sector_df['ead_m'] >= threshold_sec].copy()
-        other_sectors = sector_df[sector_df['ead_m'] < threshold_sec]
-        if not other_sectors.empty:
+        # Always show Top 5 sectors by EAD, rest go into 'Others'
+        sector_df_sorted = sector_df.sort_values('ead_m', ascending=False)
+        TOP_N_SECTORS = 5
+        main_sector_names = sector_df_sorted.head(TOP_N_SECTORS)['industry_sector'].tolist()
+        small_sector_names = sector_df_sorted.tail(len(sector_df_sorted) - TOP_N_SECTORS)['industry_sector'].tolist()
+
+        main_sectors = sector_df_sorted.head(TOP_N_SECTORS).copy()
+        if small_sector_names:
+            other_sectors_rows = sector_df[sector_df['industry_sector'].isin(small_sector_names)]
             others_row = pd.DataFrame([{
                 'industry_sector': 'Others',
-                'ead_m': other_sectors['ead_m'].sum(),
-                'rwa_m': other_sectors['rwa_m'].sum(),
-                'el_m': other_sectors['el_m'].sum(),
-                'risk_weight_pct': (other_sectors['rwa_m'].sum() / other_sectors['ead_m'].sum()) * 100
+                'ead_m': other_sectors_rows['ead_m'].sum(),
+                'rwa_m': other_sectors_rows['rwa_m'].sum(),
+                'el_m': other_sectors_rows['el_m'].sum(),
+                'risk_weight_pct': (other_sectors_rows['rwa_m'].sum() / other_sectors_rows['ead_m'].sum()) * 100
             }])
             main_sectors = pd.concat([main_sectors, others_row], ignore_index=True)
         
@@ -426,22 +429,25 @@ If interest rates suddenly rise, existing loans lose market value (like old bond
             hovertemplate="<b>%{label}</b><br>Exposure: $%{value:,.1f}M<br>Avg Risk Weight: %{color:.1f}%<extra></extra>"
         )
         st.plotly_chart(fig_sec, use_container_width=True)
-        st.info("💡 **Simplifying the Treemap:** Box size = how much money we lent to that sector. Color (red = risky, blue = safe) = Basel III penalty. Small sectors are grouped into 'Others'. Select a sector below to see its top firms.")
+        st.info("💡 **Simplifying the Treemap:** Box size = how much money we lent to that sector. Color (red = risky, blue = safe) = Basel III penalty. Smallest sectors are grouped into 'Others'. Select a sector below to see its top firms.")
 
         # --- Sector Drill-Down ---
         all_sectors = sorted(portfolio_df['industry_sector'].dropna().unique().tolist())
-        selected_sector = st.selectbox("Select a Sector to See Its Top 10 Firms", ["— Select a Sector —"] + all_sectors + ["Others (All Small Sectors)"], key="sector_drilldown")
+        sector_options = ["— Select a Sector —"] + all_sectors
+        if small_sector_names:
+            sector_options += ["Others (All Small Sectors)"]
+        selected_sector = st.selectbox("Select a Sector to See Its Top 10 Firms", sector_options, key="sector_drilldown")
+
+        sector_firms = None
         if selected_sector == "Others (All Small Sectors)":
-            sector_firms = portfolio_df[~portfolio_df['industry_sector'].isin(main_sectors['industry_sector'].tolist())].sort_values('ead_m', ascending=False).head(10)
-            if sector_firms.empty:
-                sector_firms = portfolio_df.sort_values('ead_m').head(10)
-            other_sector_names = sorted(portfolio_df[~portfolio_df['industry_sector'].isin(main_sectors['industry_sector'].tolist())]['industry_sector'].unique().tolist())
-            st.markdown("**Others bucket includes these sectors:** " + ", ".join([f"`{s}`" for s in other_sector_names]) if other_sector_names else "")
-            st.markdown("**Top Firms in Small / Other Sectors:**")
+            sector_firms = portfolio_df[portfolio_df['industry_sector'].isin(small_sector_names)].sort_values('ead_m', ascending=False).head(10)
+            st.markdown("**Others bucket includes:** " + ", ".join([f"`{s}`" for s in sorted(small_sector_names)]))
+            st.markdown("**Top Firms in Other Sectors:**")
         elif selected_sector != "— Select a Sector —":
             sector_firms = portfolio_df[portfolio_df['industry_sector'] == selected_sector].sort_values('ead_m', ascending=False).head(10)
             st.markdown(f"**Top 10 Firms in {selected_sector} Sector:**")
-        if selected_sector != "— Select a Sector —":
+
+        if sector_firms is not None and not sector_firms.empty:
             display_cols = ['client_name', 'entity_type', 'industry_sector', 'region', 'credit_rating', 'ead_m', 'rwa_m', 'expected_loss_m']
             display_df = sector_firms[display_cols].copy()
             display_df.columns = ['Client Name', 'Type', 'Sector', 'Region', 'Rating', 'EAD ($M)', 'RWA ($M)', 'Exp. Loss ($M)']
@@ -456,6 +462,7 @@ If interest rates suddenly rise, existing loans lose market value (like old bond
                 st.markdown(f"<div style='text-align:center'><div style='font-size:0.8rem;color:#64748B;text-transform:uppercase'>Avg Risk Weight</div><div style='font-size:1.4rem;font-weight:700;color:#0F172A'>{rw_val:.1f}%</div></div>", unsafe_allow_html=True)
             with mc3:
                 st.markdown(f"<div style='text-align:center'><div style='font-size:0.8rem;color:#64748B;text-transform:uppercase'>Expected Loss</div><div style='font-size:1.4rem;font-weight:700;color:#DC2626'>${sector_firms['expected_loss_m'].sum():,.1f}M</div></div>", unsafe_allow_html=True)
+
 
     with row1_col2:
         # Regional Exposure Concentration (Bar chart) - Clickable drill-down with Others grouping
