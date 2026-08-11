@@ -389,16 +389,31 @@ If interest rates suddenly rise, existing loans lose market value (like old bond
     row1_col1, row1_col2 = st.columns(2)
     
     with row1_col1:
-        # Sector Concentration Map (Treemap) - Clickable drill-down
+        # Sector Concentration Map (Treemap) - Clickable drill-down with Others grouping
         sector_df = portfolio_df.groupby('industry_sector').agg(
             ead_m=('ead_m', 'sum'),
             rwa_m=('rwa_m', 'sum'),
             el_m=('expected_loss_m', 'sum')
         ).reset_index()
         sector_df['risk_weight_pct'] = (sector_df['rwa_m'] / sector_df['ead_m']) * 100
+
+        # Group small sectors (< 2% of total EAD) into 'Others'
+        total_ead_sec = sector_df['ead_m'].sum()
+        threshold_sec = total_ead_sec * 0.02
+        main_sectors = sector_df[sector_df['ead_m'] >= threshold_sec].copy()
+        other_sectors = sector_df[sector_df['ead_m'] < threshold_sec]
+        if not other_sectors.empty:
+            others_row = pd.DataFrame([{
+                'industry_sector': 'Others',
+                'ead_m': other_sectors['ead_m'].sum(),
+                'rwa_m': other_sectors['rwa_m'].sum(),
+                'el_m': other_sectors['el_m'].sum(),
+                'risk_weight_pct': (other_sectors['rwa_m'].sum() / other_sectors['ead_m'].sum()) * 100
+            }])
+            main_sectors = pd.concat([main_sectors, others_row], ignore_index=True)
         
         fig_sec = px.treemap(
-            sector_df,
+            main_sectors,
             path=['industry_sector'],
             values='ead_m',
             color='risk_weight_pct',
@@ -411,32 +426,59 @@ If interest rates suddenly rise, existing loans lose market value (like old bond
             hovertemplate="<b>%{label}</b><br>Exposure: $%{value:,.1f}M<br>Avg Risk Weight: %{color:.1f}%<extra></extra>"
         )
         st.plotly_chart(fig_sec, use_container_width=True)
-        st.info("💡 **Simplifying the Treemap:** Box size = how much money we lent to that sector. Color (red = risky, blue = safe) = Basel III penalty. Click a sector below to see its top firms.")
+        st.info("💡 **Simplifying the Treemap:** Box size = how much money we lent to that sector. Color (red = risky, blue = safe) = Basel III penalty. Small sectors are grouped into 'Others'. Select a sector below to see its top firms.")
 
         # --- Sector Drill-Down ---
         all_sectors = sorted(portfolio_df['industry_sector'].dropna().unique().tolist())
-        selected_sector = st.selectbox("Click a Sector to See Its Top 10 Firms", ["— Select a Sector —"] + all_sectors, key="sector_drilldown")
-        if selected_sector != "— Select a Sector —":
+        selected_sector = st.selectbox("Select a Sector to See Its Top 10 Firms", ["— Select a Sector —"] + all_sectors + ["Others (All Small Sectors)"], key="sector_drilldown")
+        if selected_sector == "Others (All Small Sectors)":
+            sector_firms = portfolio_df[~portfolio_df['industry_sector'].isin(main_sectors['industry_sector'].tolist())].sort_values('ead_m', ascending=False).head(10)
+            if sector_firms.empty:
+                sector_firms = portfolio_df.sort_values('ead_m').head(10)
+            st.markdown("**Top Firms in Small / Other Sectors:**")
+        elif selected_sector != "— Select a Sector —":
             sector_firms = portfolio_df[portfolio_df['industry_sector'] == selected_sector].sort_values('ead_m', ascending=False).head(10)
             st.markdown(f"**Top 10 Firms in {selected_sector} Sector:**")
+        if selected_sector != "— Select a Sector —":
             display_cols = ['client_name', 'entity_type', 'region', 'credit_rating', 'ead_m', 'rwa_m', 'expected_loss_m']
             display_df = sector_firms[display_cols].copy()
             display_df.columns = ['Client Name', 'Type', 'Region', 'Rating', 'EAD ($M)', 'RWA ($M)', 'Exp. Loss ($M)']
             display_df = display_df.round(2)
             st.dataframe(display_df, use_container_width=True)
-            # Mini metrics for selected sector
+            # Mini metrics for selected sector - using markdown to avoid truncation
             mc1, mc2, mc3 = st.columns(3)
-            mc1.metric("Total Sector EAD", f"${sector_firms['ead_m'].sum():,.1f}M")
-            mc2.metric("Avg Risk Weight", f"{(sector_firms['rwa_m'].sum()/sector_firms['ead_m'].sum())*100:.1f}%")
-            mc3.metric("Expected Loss", f"${sector_firms['expected_loss_m'].sum():,.1f}M")
-        
+            with mc1:
+                st.markdown(f"<div style='text-align:center'><div style='font-size:0.8rem;color:#64748B;text-transform:uppercase'>Total Sector EAD</div><div style='font-size:1.4rem;font-weight:700;color:#0F172A'>${sector_firms['ead_m'].sum():,.1f}M</div></div>", unsafe_allow_html=True)
+            with mc2:
+                rw_val = (sector_firms['rwa_m'].sum()/sector_firms['ead_m'].sum())*100
+                st.markdown(f"<div style='text-align:center'><div style='font-size:0.8rem;color:#64748B;text-transform:uppercase'>Avg Risk Weight</div><div style='font-size:1.4rem;font-weight:700;color:#0F172A'>{rw_val:.1f}%</div></div>", unsafe_allow_html=True)
+            with mc3:
+                st.markdown(f"<div style='text-align:center'><div style='font-size:0.8rem;color:#64748B;text-transform:uppercase'>Expected Loss</div><div style='font-size:1.4rem;font-weight:700;color:#DC2626'>${sector_firms['expected_loss_m'].sum():,.1f}M</div></div>", unsafe_allow_html=True)
+
     with row1_col2:
-        # Regional Exposure Concentration (Bar chart) - Clickable drill-down
-        region_df = portfolio_df.groupby(['region', 'entity_type']).agg(
+        # Regional Exposure Concentration (Bar chart) - Clickable drill-down with Others grouping
+        region_agg = portfolio_df.groupby(['region', 'entity_type']).agg(
             ead_m=('ead_m', 'sum'),
             rwa_m=('rwa_m', 'sum'),
             el_m=('expected_loss_m', 'sum')
         ).reset_index()
+
+        # Group small regions (< 2% of total EAD) into 'Others'
+        region_totals = region_agg.groupby('region')['ead_m'].sum().reset_index()
+        region_totals.columns = ['region', 'total_ead']
+        total_ead_reg = region_totals['total_ead'].sum()
+        threshold_reg = total_ead_reg * 0.02
+        main_region_names = region_totals[region_totals['total_ead'] >= threshold_reg]['region'].tolist()
+        small_region_names = region_totals[region_totals['total_ead'] < threshold_reg]['region'].tolist()
+
+        region_df = region_agg[region_agg['region'].isin(main_region_names)].copy()
+        if small_region_names:
+            others_corp = region_agg[(region_agg['region'].isin(small_region_names)) & (region_agg['entity_type'] == 'Corporate')]
+            others_sov = region_agg[(region_agg['region'].isin(small_region_names)) & (region_agg['entity_type'] == 'Sovereign')]
+            if not others_corp.empty:
+                region_df = pd.concat([region_df, pd.DataFrame([{'region': 'Others', 'entity_type': 'Corporate', 'ead_m': others_corp['ead_m'].sum(), 'rwa_m': others_corp['rwa_m'].sum(), 'el_m': others_corp['el_m'].sum()}])], ignore_index=True)
+            if not others_sov.empty:
+                region_df = pd.concat([region_df, pd.DataFrame([{'region': 'Others', 'entity_type': 'Sovereign', 'ead_m': others_sov['ead_m'].sum(), 'rwa_m': others_sov['rwa_m'].sum(), 'el_m': others_sov['el_m'].sum()}])], ignore_index=True)
         
         fig_reg = px.bar(
             region_df,
@@ -458,20 +500,33 @@ If interest rates suddenly rise, existing loans lose market value (like old bond
             hovertemplate="<b>%{x}</b><br>Exposure: $%{y:,.1f}M<extra></extra>"
         )
         st.plotly_chart(fig_reg, use_container_width=True)
-        st.info("💡 **Simplifying Regional Risk:** Blue = Corporate loans, Green = Government bonds. Taller bar = more money lent there. Click a region below to see detailed country risk breakdown.")
+        st.info("💡 **Simplifying Regional Risk:** Blue = Corporate loans, Green = Government bonds. Taller bar = more money lent there. Small regions are grouped into 'Others'. Select a region below to see detailed breakdown.")
 
         # --- Region Drill-Down ---
         all_regions = sorted(portfolio_df['region'].dropna().unique().tolist())
-        selected_region = st.selectbox("Click a Region to See Detailed Breakdown", ["— Select a Region —"] + all_regions, key="region_drilldown")
-        if selected_region != "— Select a Region —":
+        drilldown_options = ["— Select a Region —"] + all_regions
+        if small_region_names:
+            drilldown_options += ["Others (All Small Regions)"]
+        selected_region = st.selectbox("Select a Region to See Detailed Breakdown", drilldown_options, key="region_drilldown")
+        if selected_region == "Others (All Small Regions)":
+            region_detail = portfolio_df[portfolio_df['region'].isin(small_region_names)]
+            st.markdown("**Others (Small Regions) — Risk Breakdown:**")
+        elif selected_region != "— Select a Region —":
             region_detail = portfolio_df[portfolio_df['region'] == selected_region]
             st.markdown(f"**{selected_region} — Risk Breakdown:**")
-            # Summary metrics
+        if selected_region != "— Select a Region —":
+            # Summary metrics - using markdown to avoid truncation
             rmc1, rmc2, rmc3, rmc4 = st.columns(4)
-            rmc1.metric("Total EAD", f"${region_detail['ead_m'].sum():,.1f}M")
-            rmc2.metric("Total RWA", f"${region_detail['rwa_m'].sum():,.1f}M")
-            rmc3.metric("Avg Risk Weight", f"{(region_detail['rwa_m'].sum()/region_detail['ead_m'].sum())*100:.1f}%")
-            rmc4.metric("Exp. Loss", f"${region_detail['expected_loss_m'].sum():,.1f}M")
+            with rmc1:
+                st.markdown(f"<div style='text-align:center'><div style='font-size:0.75rem;color:#64748B;text-transform:uppercase'>Total EAD</div><div style='font-size:1.3rem;font-weight:700;color:#0F172A'>${region_detail['ead_m'].sum():,.0f}M</div></div>", unsafe_allow_html=True)
+            with rmc2:
+                st.markdown(f"<div style='text-align:center'><div style='font-size:0.75rem;color:#64748B;text-transform:uppercase'>Total RWA</div><div style='font-size:1.3rem;font-weight:700;color:#0F172A'>${region_detail['rwa_m'].sum():,.0f}M</div></div>", unsafe_allow_html=True)
+            with rmc3:
+                rw_reg = (region_detail['rwa_m'].sum()/region_detail['ead_m'].sum())*100
+                st.markdown(f"<div style='text-align:center'><div style='font-size:0.75rem;color:#64748B;text-transform:uppercase'>Avg Risk Weight</div><div style='font-size:1.3rem;font-weight:700;color:#0F172A'>{rw_reg:.1f}%</div></div>", unsafe_allow_html=True)
+            with rmc4:
+                st.markdown(f"<div style='text-align:center'><div style='font-size:0.75rem;color:#64748B;text-transform:uppercase'>Exp. Loss</div><div style='font-size:1.3rem;font-weight:700;color:#DC2626'>${region_detail['expected_loss_m'].sum():,.0f}M</div></div>", unsafe_allow_html=True)
+            st.markdown("<br>", unsafe_allow_html=True)
             # Rating distribution in that region
             rating_dist = region_detail.groupby('credit_rating')['ead_m'].sum().reset_index()
             rating_dist.columns = ['Credit Rating', 'EAD ($M)']
@@ -490,6 +545,7 @@ If interest rates suddenly rise, existing loans lose market value (like old bond
             disp2 = top_region_clients[['client_name', 'entity_type', 'credit_rating', 'ead_m', 'expected_loss_m', 'hqla_class']].copy()
             disp2.columns = ['Client Name', 'Type', 'Rating', 'EAD ($M)', 'Exp. Loss ($M)', 'HQLA Class']
             st.dataframe(disp2.round(2), use_container_width=True)
+
 
     row2_col1, row2_col2 = st.columns(2)
     
